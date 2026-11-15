@@ -106,6 +106,38 @@ pub fn output() -> Option<Output> {
     outputs().into_iter().nth(i)
 }
 
+/// Index of the display voxl streams (0 is the primary).
+pub fn display() -> usize {
+    SETTINGS.lock().display
+}
+
+/// Streams display `n` (an index into `outputs()`) from the next capture start on.
+pub fn select_display(n: usize) -> Result<(), String> {
+    if n >= outputs().len() {
+        return Err("display is no longer connected".into());
+    }
+    SETTINGS.lock().display = n;
+    Ok(())
+}
+
+/// The `displays` part of `hello`, in the shape the macOS backend sends (and the web
+/// client's picker reads); the ids are indexes into `outputs()`.
+pub fn display_info() -> serde_json::Value {
+    let displays: Vec<_> = outputs()
+        .iter()
+        .enumerate()
+        .map(|(i, o)| {
+            let r = o.rect();
+            let main = if i == 0 { " · Main" } else { "" };
+            serde_json::json!({
+                "id": i,
+                "name": format!("Display {} ({}x{}){main}", i + 1, r.right - r.left, r.bottom - r.top),
+            })
+        })
+        .collect();
+    serde_json::json!({ "selected": display(), "available": displays })
+}
+
 /// Reads the Windows options. Must run before anything opens a window or a device
 /// context, so every coordinate is in physical pixels.
 pub fn init(a: &HashMap<String, String>) {
