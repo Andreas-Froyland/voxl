@@ -275,6 +275,11 @@ it runs as SYSTEM. For the microphone, install a virtual audio cable
 ([VB-CABLE](https://vb-audio.com/Cable/)): voxl plays into "CABLE Input" and apps record
 from "CABLE Output".
 
+With multiple displays, the toolbar's Display picker changes the captured monitor
+without reconnecting: all viewers follow the selection and get the new monitor's size;
+read-only viewers cannot change it. `--display` still selects the initial monitor. With
+`--enable-resize`, the monitor being left goes back to its own resolution.
+
 | Windows flag          | Default                   |                                                                    |
 | --------------------- | ------------------------- | ------------------------------------------------------------------ |
 | `--display`           | primary display           | display to stream, by index (0 is the primary); logged at startup  |

@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 #[derive(Clone)]
 pub struct VideoConfig {
     pub display: Option<String>,
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", windows))]
     pub enable_resize: bool,
     pub fps: u32,
     pub preset: String,
@@ -111,6 +111,18 @@ pub fn spawn(
                 });
                 continue;
             }
+            #[cfg(windows)]
+            let display_switch = hub.display_switch.lock().take();
+            #[cfg(windows)]
+            if let Some(id) = display_switch {
+                // A resize for the old monitor must not be applied to the new one.
+                hub.resize_req.lock().take();
+                p = switch_display(id, &cfg, &hub, &mut screen).unwrap_or_else(|e| {
+                    log::error!("display switch failed: {e}");
+                    std::process::exit(1);
+                });
+                continue;
+            }
             let req = hub.resize_req.lock().take();
             if let (Some(s), Some((w, h))) = (screen.as_mut(), req) {
                 if let Err(e) = s.resize(w, h) {
@@ -167,6 +179,54 @@ fn switch_display(
         open(previous)
     })?;
     *hub.input.lock() = Some(request.sender);
+    Ok(pipeline)
+}
+
+#[cfg(windows)]
+fn switch_display(
+    id: usize,
+    cfg: &VideoConfig,
+    hub: &Arc<Hub>,
+    screen: &mut Option<crate::screen::Screen>,
+) -> Result<Pipeline, String> {
+    let previous = crate::win::display();
+    // The display we leave goes back to its own mode; dynamic resolution then
+    // starts over on the new one.
+    if let Some(mut old) = screen.take() {
+        if let Err(e) = old.restore() {
+            log::warn!("could not restore the previous display mode: {e}");
+        }
+    }
+    let mut open = |id| {
+        crate::win::select_display(id)?;
+        *screen = if cfg.enable_resize {
+            crate::screen::Screen::open(None)
+                .inspect_err(|e| log::warn!("dynamic resolution unavailable: {e}"))
+                .ok()
+        } else {
+            None
+        };
+        *hub.resize_max.lock() = screen.as_ref().map(|s| s.max());
+        {
+            let mut extra = hub.hello_extra.lock();
+            match screen {
+                Some(_) => {
+                    extra
+                        .entry("resize")
+                        .or_insert_with(|| serde_json::json!({ "scale": crate::win::dpi_scale() }));
+                }
+                None => {
+                    extra.remove("resize");
+                }
+            }
+        }
+        build(cfg, hub)
+    };
+    let pipeline = open(id).or_else(|e| {
+        log::warn!("display switch: {e}; going back to display {previous}");
+        open(previous)
+    })?;
+    log::info!("streaming display {}", crate::win::display());
     Ok(pipeline)
 }
 
@@ -240,6 +300,10 @@ fn build(cfg: &VideoConfig, hub: &Arc<Hub>) -> Result<Pipeline, String> {
             extra.remove("resize");
         }
     }
+    #[cfg(windows)]
+    hub.hello_extra
+        .lock()
+        .insert("displays".into(), crate::win::display_info());
     // New geometry (and a keyframe) for clients already connected; no-op at startup.
     hub.restart_clients();
     Ok(Pipeline {
@@ -556,6 +620,10 @@ fn capture_loop(
     loop {
         #[cfg(target_os = "macos")]
         if hub.display_req.lock().is_some() {
+            return Ok(());
+        }
+        #[cfg(windows)]
+        if hub.display_switch.lock().is_some() {
             return Ok(());
         }
         if hub.resize_req.lock().is_some() || cap.needs_rebuild() {

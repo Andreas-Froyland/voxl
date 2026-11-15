@@ -240,6 +240,9 @@ pub struct Hub {
     /// Connections older than this may no longer inject input after a display switch.
     #[cfg(target_os = "macos")]
     pub input_floor: AtomicU64,
+    /// Display a client asked to stream (Windows), applied by the video thread.
+    #[cfg(windows)]
+    pub display_switch: Mutex<Option<usize>>,
     pub clients: Mutex<Vec<Arc<Client>>>,
     pub next_id: AtomicU64,
     pub stats: Stats,
@@ -274,6 +277,8 @@ impl Hub {
             display_req: Mutex::new(None),
             #[cfg(target_os = "macos")]
             input_floor: AtomicU64::new(0),
+            #[cfg(windows)]
+            display_switch: Mutex::new(None),
             clients: Mutex::new(Vec::new()),
             next_id: AtomicU64::new(1),
             stats: Stats::default(),

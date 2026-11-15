@@ -8,7 +8,7 @@ use parking_lot::Mutex;
 use std::time::{Duration, Instant};
 use windows::core::PCWSTR;
 use windows::Win32::Graphics::Gdi::{
-    ChangeDisplaySettingsExW, EnumDisplaySettingsW, CDS_FULLSCREEN, DEVMODEW,
+    ChangeDisplaySettingsExW, EnumDisplaySettingsW, CDS_FULLSCREEN, CDS_TYPE, DEVMODEW,
     DISP_CHANGE_SUCCESSFUL, DM_BITSPERPEL, DM_DISPLAYFREQUENCY, DM_PELSHEIGHT, DM_PELSWIDTH,
     ENUM_CURRENT_SETTINGS, ENUM_DISPLAY_SETTINGS_MODE,
 };
@@ -113,6 +113,18 @@ impl Screen {
 
     pub fn max(&self) -> (u32, u32) {
         self.max
+    }
+
+    /// Puts the display back in its registry mode, undoing our size changes (Windows
+    /// would only do that when voxl exits). Used before streaming another display.
+    pub fn restore(&mut self) -> Result<(), String> {
+        let r = unsafe {
+            ChangeDisplaySettingsExW(PCWSTR(self.device.as_ptr()), None, None, CDS_TYPE(0), None)
+        };
+        if r != DISP_CHANGE_SUCCESSFUL {
+            return Err(format!("ChangeDisplaySettingsEx: {}", r.0));
+        }
+        Ok(())
     }
 
     pub fn fit(&self, w: u32, h: u32) -> (u32, u32) {

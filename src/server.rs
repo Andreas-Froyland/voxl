@@ -349,6 +349,21 @@ fn handle_text(s: &AppState, c: &Arc<Client>, t: &str, rtts: &mut std::collectio
                 }
             }
         }
+        // Windows: every viewer shares one stream, so a switch moves them all; they
+        // get the new display's geometry in a fresh hello, without reconnecting.
+        #[cfg(windows)]
+        "ds" => {
+            if let Ok(id) = rest.parse::<usize>() {
+                if id != crate::win::display() && id < crate::win::outputs().len() {
+                    *s.hub.display_switch.lock() = Some(id);
+                } else {
+                    // Already showing it, or it's gone: refresh this viewer's picker.
+                    c.needs_keyframe.store(true, Ordering::Relaxed);
+                    c.send(Out::Text(s.hub.hello()));
+                }
+                s.hub.wake();
+            }
+        }
         "a" => {
             if let Some(id) = num::<u32>(&mut it) {
                 c.on_ack(id);
